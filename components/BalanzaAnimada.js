@@ -50,7 +50,9 @@ export default function BalanzaAnimada({
                 onResponderLongPress={() => {
                     if (allowRemove && onRemove) onRemove(b, lado);
                 }}
-            />
+            >
+                <Text style={styles.numero} selectable={false}>{b.numero}</Text>
+            </View>
         ));
 
     return (
@@ -131,5 +133,18 @@ const styles = StyleSheet.create({
         borderColor: '#ccc',
     },
     pesoText: { position: 'absolute', bottom: 11, fontSize: 12, fontWeight: 'bold', color: 'black', zIndex: 2 },
-    miniBloque: { width: 15, height: 15, borderRadius: 4, margin: 1.5 },
+    miniBloque: {
+        width: 15,
+        height: 15,
+        borderRadius: 4,
+        margin: 1.5,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    numero: {
+        color: 'black',
+        fontSize: 10,
+        fontWeight: 'bold',
+        textAlign: 'center',
+    },
 });

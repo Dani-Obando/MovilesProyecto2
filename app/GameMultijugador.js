@@ -39,14 +39,20 @@ export default function GameMultijugador() {
     useEffect(() => {
         const nuevos = [];
         COLORES.forEach(color => {
-            for (let i = 0; i < 2; i++) {
-                nuevos.push({
-                    id: `${color}-${i}-${Math.random().toString(36).substring(2, 7)}`,
-                    color,
-                    peso: Math.floor(Math.random() * 19) + 2,
-                    pan: new Animated.ValueXY(),
-                });
-            }
+            nuevos.push({
+                id: `${color}-1-${Math.random().toString(36).substring(2, 7)}`,
+                color,
+                peso: Math.floor(Math.random() * 19) + 2,
+                pan: new Animated.ValueXY(),
+                numero: 1, // 🔥 Aquí número fijo
+            });
+            nuevos.push({
+                id: `${color}-2-${Math.random().toString(36).substring(2, 7)}`,
+                color,
+                peso: Math.floor(Math.random() * 19) + 2,
+                pan: new Animated.ValueXY(),
+                numero: 2, // 🔥 Aquí número fijo
+            });
         });
         setBloques(nuevos);
     }, []);
@@ -209,7 +215,7 @@ export default function GameMultijugador() {
             <Text style={styles.section} selectable={false}>Balanza 2 (prueba libre):</Text>
             <BalanzaAnimada pesoIzq={pesoIzq2} pesoDer={pesoDer2} bloquesIzq={bloquesIzq2} bloquesDer={bloquesDer2} setDropAreas={setDropAreas2} allowRemove={true} />
 
-            <View style={styles.botonera}>
+            <View style={styles.ra}>
                 <View style={{ flex: 1, marginRight: 10 }}>
                     <Button title="Quitar izquierdo" onPress={() => quitarUltimoBloque('izquierdo')} />
                 </View>

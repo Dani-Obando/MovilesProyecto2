@@ -19,17 +19,21 @@ app.use("/adivinanzas", adivinanzasRoute);
 
 conectarDB();
 
-const COLORES = ["red", "blue", "green", "orange", "purple"];
-
+// ----------------- Variables Globales -----------------
 let jugadores = [];
 let turnoActual = 0;
 let pesoIzquierdo = 0;
 let pesoDerecho = 0;
-let bloquesPorJugador = {}; // { nombre: [bloques] }
-let bloquesColocadosPorJugador = {}; // { nombre: cantidad }
-let sesionesIndividuales = {}; // { nombre: { ... } }
+let totalJugadas = 0;
+let bloquesTotales = 0;
+let bloquesPorJugador = {};
+let sesionesIndividuales = {};
+let jugadasMultijugador = [];
 let turnoTimeout = null;
 
+const COLORES = ["red", "blue", "green", "orange", "purple"];
+
+// ----------------- WebSocket -----------------
 wss.on("connection", (ws) => {
     ws.id = Math.random().toString(36).substring(2);
     ws.eliminado = false;
@@ -45,7 +49,7 @@ wss.on("connection", (ws) => {
                 if (ws.modo === "individual") {
                     if (!sesionesIndividuales[ws.nombre]) {
                         const bloques = [];
-                        COLORES.forEach(color => {
+                        COLORES.forEach((color) => {
                             for (let i = 0; i < 2; i++) {
                                 bloques.push({ color, peso: Math.floor(Math.random() * 19) + 2 });
                             }
@@ -58,41 +62,37 @@ wss.on("connection", (ws) => {
                             terminado: false,
                         };
                     }
+
                     ws.send(JSON.stringify({
                         type: "TURNO",
                         tuTurno: true,
                         jugadorEnTurno: ws.nombre,
                     }));
+
                 } else {
                     const yaExiste = jugadores.find(j => j.nombre === msg.jugador);
                     if (yaExiste) {
-                        ws.send(JSON.stringify({ type: "ERROR", mensaje: "Nombre ya en uso." }));
+                        ws.send(JSON.stringify({ type: "ERROR", mensaje: "Nombre duplicado" }));
                         ws.close();
                         return;
                     }
 
-                    const bloques = [];
-                    COLORES.forEach(color => {
-                        for (let i = 0; i < 2; i++) {
-                            bloques.push({ color, peso: Math.floor(Math.random() * 19) + 2 });
-                        }
-                    });
-                    bloquesPorJugador[msg.jugador] = bloques;
-                    bloquesColocadosPorJugador[msg.jugador] = 0;
-
                     jugadores.push(ws);
 
-                    broadcast({
-                        type: "MENSAJE",
-                        contenido: `${msg.jugador} se ha unido al juego.`,
-                    });
+                    if (!bloquesPorJugador[msg.jugador]) {
+                        const bloques = [];
+                        COLORES.forEach(color => {
+                            for (let i = 0; i < 2; i++) {
+                                bloques.push({ color, peso: Math.floor(Math.random() * 19) + 2 });
+                                bloquesTotales++;
+                            }
+                        });
+                        bloquesPorJugador[msg.jugador] = bloques;
+                    }
 
-                    broadcast({
-                        type: "ENTRADA",
-                        totalJugadores: jugadores.length,
-                    });
+                    broadcast({ type: "ENTRADA", totalJugadores: jugadores.length });
 
-                    if (jugadores.length >= 2) { // Aquí puedes cambiar a >= 10 después
+                    if (jugadores.length >= 2) {
                         enviarTurno();
                     }
                 }
@@ -117,11 +117,13 @@ wss.on("connection", (ws) => {
     });
 });
 
+// ----------------- Funciones -----------------
 function procesarJugadaIndividual(ws, msg) {
     const sesion = sesionesIndividuales[ws.nombre];
     if (!sesion || sesion.terminado) return;
 
-    sesion.jugadas.push(msg);
+    sesion.jugadas.push({ ...msg });
+
     if (msg.lado === "izquierdo") sesion.pesoIzquierdo += msg.peso;
     else sesion.pesoDerecho += msg.peso;
 
@@ -129,26 +131,23 @@ function procesarJugadaIndividual(ws, msg) {
         type: "ACTUALIZAR_BALANZA",
         izquierdo: sesion.pesoIzquierdo,
         derecho: sesion.pesoDerecho,
+        jugador: msg.jugador,
     }));
 
     if (sesion.jugadas.length >= 10) {
         sesion.terminado = true;
-        ws.send(JSON.stringify({
-            type: "RESUMEN",
-            jugador: ws.nombre,
+        const resumen = {
+            contenido: sesion.jugadas,
             totales: {
                 izquierdo: sesion.pesoIzquierdo,
                 derecho: sesion.pesoDerecho,
             },
-            contenido: sesion.jugadas,
             sobrevivientes: [ws.nombre],
-            ganador:
-                sesion.pesoIzquierdo === sesion.pesoDerecho ? "Empate" :
-                    sesion.pesoIzquierdo < sesion.pesoDerecho ? "Izquierdo" : "Derecho",
-            bloquesPorJugador: {
-                [ws.nombre]: sesion.bloques,
-            },
-        }));
+            ganador: calcularGanador(sesion.pesoIzquierdo, sesion.pesoDerecho),
+            bloquesPorJugador: { [ws.nombre]: sesion.bloques },
+        };
+
+        ws.send(JSON.stringify({ type: "RESUMEN", ...resumen }));
     } else {
         ws.send(JSON.stringify({
             type: "TURNO",
@@ -162,15 +161,17 @@ async function procesarJugadaMultijugador(ws, msg) {
     clearTimeout(turnoTimeout);
 
     const jugadorActual = jugadores[turnoActual];
-    if (!jugadorActual || jugadorActual.eliminado) return;
-
-    if (!bloquesColocadosPorJugador[msg.jugador]) {
-        bloquesColocadosPorJugador[msg.jugador] = 0;
-    }
-    bloquesColocadosPorJugador[msg.jugador]++;
+    if (!jugadorActual) return;
 
     if (msg.lado === "izquierdo") pesoIzquierdo += msg.peso;
     else pesoDerecho += msg.peso;
+
+    jugadasMultijugador.push({
+        turno: totalJugadas + 1,
+        jugador: msg.jugador,
+        peso: msg.peso,
+        color: msg.color || null,
+    });
 
     broadcast({
         type: "ACTUALIZAR_BALANZA",
@@ -184,13 +185,23 @@ async function procesarJugadaMultijugador(ws, msg) {
         contenido: `${msg.jugador} colocó ${msg.peso}g en el lado ${msg.lado}`,
     });
 
-    const todosTerminaron = jugadores.every(j => bloquesColocadosPorJugador[j.nombre] >= 10);
+    totalJugadas++;
 
-    if (todosTerminaron) {
+    if (totalJugadas >= bloquesTotales) {
         enviarResumenFinal();
     } else {
         avanzarTurno();
     }
+}
+
+function avanzarTurno() {
+    if (jugadores.length === 0) return;
+
+    do {
+        turnoActual = (turnoActual + 1) % jugadores.length;
+    } while (jugadores[turnoActual]?.eliminado);
+
+    enviarTurno();
 }
 
 function enviarTurno() {
@@ -199,75 +210,71 @@ function enviarTurno() {
     if (!jugadores.length || turnoActual >= jugadores.length) return;
 
     const jugadorActual = jugadores[turnoActual];
-    if (!jugadorActual || jugadorActual.eliminado) {
-        avanzarTurno();
-        return;
-    }
+    if (!jugadorActual) return;
 
     jugadores.forEach((j, i) => {
         if (j.readyState === WebSocket.OPEN) {
             j.send(JSON.stringify({
                 type: "TURNO",
-                tuTurno: i === turnoActual,
+                tuTurno: i === turnoActual && !j.eliminado,
                 jugadorEnTurno: jugadorActual.nombre,
             }));
         }
     });
 
     turnoTimeout = setTimeout(() => {
-        jugadorActual.eliminado = true;
-        jugadorActual.send(JSON.stringify({
-            type: "ELIMINADO",
-            mensaje: "Eliminado por inactividad (60s sin mover bloque).",
-        }));
+        jugadores[turnoActual].eliminado = true;
         broadcast({
             type: "MENSAJE",
-            contenido: `${jugadorActual.nombre} fue eliminado por inactividad.`,
+            contenido: `${jugadores[turnoActual].nombre} fue eliminado por inactividad.`,
         });
         avanzarTurno();
-    }, 60000);
+    }, 60000); // 60 segundos
 }
 
-function avanzarTurno() {
-    if (!jugadores.length) return;
-
-    let intentos = 0;
-    do {
-        turnoActual = (turnoActual + 1) % jugadores.length;
-        intentos++;
-    } while (jugadores[turnoActual]?.eliminado && intentos < jugadores.length);
-
-    enviarTurno();
+function calcularGanador(izq, der) {
+    if (izq === der) return "Empate";
+    return izq < der ? "Izquierdo" : "Derecho";
 }
 
 function broadcast(data) {
-    const mensaje = typeof data === "string" ? data : JSON.stringify(data);
-    jugadores.forEach(j => {
+    const mensaje = JSON.stringify(data);
+    jugadores.forEach((j) => {
         if (j.readyState === WebSocket.OPEN) {
             j.send(mensaje);
         }
     });
 }
 
-async function enviarResumenFinal() {
-    const sobrevivientes = jugadores.filter(j => !j.eliminado).map(j => j.nombre);
+function enviarResumenFinal() {
+    const sobrevivientes = jugadores.filter(j => !j.eliminado).map(j => j.nombre || "Jugador");
 
     broadcast({
         type: "RESUMEN",
-        contenido: [],
+        contenido: jugadasMultijugador,
         totales: {
             izquierdo: pesoIzquierdo,
             derecho: pesoDerecho,
         },
         sobrevivientes,
-        ganador:
-            pesoIzquierdo === pesoDerecho ? "Empate" :
-                pesoIzquierdo < pesoDerecho ? "Izquierdo" : "Derecho",
+        ganador: calcularGanador(pesoIzquierdo, pesoDerecho),
         bloquesPorJugador,
     });
+
+    // RESET
+    jugadores.forEach(j => j.eliminado = false);
+    jugadores = [];
+    turnoActual = 0;
+    pesoIzquierdo = 0;
+    pesoDerecho = 0;
+    totalJugadas = 0;
+    bloquesTotales = 0;
+    bloquesPorJugador = {};
+    jugadasMultijugador = [];
 }
 
+// ----------------- Server Start -----------------
 const PORT = 5000;
 server.listen(PORT, () => {
-    console.log(`🚀 Servidor listo en http://localhost:${PORT}`);
+    console.log(`🚀 Servidor activo en http://localhost:${PORT}`);
 });

@@ -35,14 +35,21 @@ export default function GameIndividual() {
     useEffect(() => {
         const nuevos = [];
         COLORES.forEach(color => {
-            for (let i = 0; i < 2; i++) {
-                nuevos.push({
-                    id: `${color}-${i}-${Math.random().toString(36).substring(2, 7)}`,
-                    color,
-                    peso: Math.floor(Math.random() * 19) + 2,
-                    pan: new Animated.ValueXY(),
-                });
-            }
+            // 🔥 Cada color tiene dos bloques, uno con número 1 y otro con número 2
+            nuevos.push({
+                id: `${color}-1-${Math.random().toString(36).substring(2, 7)}`,
+                color,
+                peso: Math.floor(Math.random() * 19) + 2,
+                pan: new Animated.ValueXY(),
+                numero: 1,
+            });
+            nuevos.push({
+                id: `${color}-2-${Math.random().toString(36).substring(2, 7)}`,
+                color,
+                peso: Math.floor(Math.random() * 19) + 2,
+                pan: new Animated.ValueXY(),
+                numero: 2,
+            });
         });
         setBloques(nuevos);
     }, []);
@@ -156,7 +163,9 @@ export default function GameIndividual() {
                     { backgroundColor: bloque.color },
                     { transform: bloque.pan.getTranslateTransform() },
                 ]}
-            />
+            >
+                <Text style={styles.numero}>{bloque.numero}</Text>
+            </Animated.View>
         );
     };
 
@@ -207,6 +216,7 @@ const styles = StyleSheet.create({
     subtitulo: { fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#666' },
     section: { fontSize: 16, fontWeight: 'bold', marginTop: 20 },
     bloquesContainer: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 20 },
-    bloque: { width: 60, height: 60, borderRadius: 8, margin: 8 },
+    bloque: { width: 60, height: 60, borderRadius: 8, margin: 8, justifyContent: 'center', alignItems: 'center' },
     botonera: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
+    numero: { fontSize: 24, fontWeight: 'bold', color: 'black', textAlign: 'center' },
 });
