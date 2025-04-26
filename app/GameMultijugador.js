@@ -1,3 +1,4 @@
+// GameMultijugador.js
 import React, { useEffect, useState, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -32,6 +33,7 @@ export default function GameMultijugador() {
     const [dropAreas1, setDropAreas1] = useState({ izquierdo: null, derecho: null });
     const [dropAreas2, setDropAreas2] = useState({ izquierdo: null, derecho: null });
     const [contador, setContador] = useState(300);
+    const [jugadoresConectados, setJugadoresConectados] = useState(0);
     const intervaloRef = useRef(null);
 
     useEffect(() => {
@@ -53,18 +55,17 @@ export default function GameMultijugador() {
         const socket = getSocket();
         if (!socket) return;
 
-        socket.onopen = () => {
-            socket.send(JSON.stringify({ type: 'ENTRADA', jugador: nombre, modo: 'multijugador' }));
-        };
-
         socket.onmessage = (e) => {
             const data = JSON.parse(e.data);
+            if (data.type === 'ENTRADA') {
+                setJugadoresConectados(data.totalJugadores || 0);
+            }
             if (data.type === 'TURNO') {
                 setMiTurno(data.tuTurno);
                 setJugadorEnTurno(data.jugadorEnTurno);
                 if (data.tuTurno) {
-                    setContador(300);
                     clearInterval(intervaloRef.current);
+                    setContador(300);
                     intervaloRef.current = setInterval(() => {
                         setContador(prev => {
                             if (prev <= 1) {
@@ -76,12 +77,6 @@ export default function GameMultijugador() {
                     }, 1000);
                 }
             }
-            if (data.type === 'IR_A_ADIVINANZA') {
-                router.replace({
-                    pathname: '/adivinanza',
-                    params: { nombre },
-                });
-            }
             if (data.type === 'RESUMEN') {
                 router.replace({
                     pathname: '/result',
@@ -92,6 +87,16 @@ export default function GameMultijugador() {
                 });
             }
         };
+
+        if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ENTRADA', jugador: nombre, modo: 'multijugador' }));
+        } else {
+            socket.onopen = () => {
+                socket.send(JSON.stringify({ type: 'ENTRADA', jugador: nombre, modo: 'multijugador' }));
+            };
+        }
+
+        return () => clearInterval(intervaloRef.current);
     }, []);
 
     const enviarJugada = (bloque, lado, balanza) => {
@@ -105,14 +110,15 @@ export default function GameMultijugador() {
                 color: bloque.color,
                 lado,
             }));
-            socket.send(JSON.stringify({ type: 'FINALIZAR_TURNO', jugador: nombre }));
         }
 
-        if (lado === 'izquierdo') setPesoIzq1(p => p + bloque.peso);
-        else setPesoDer1(p => p + bloque.peso);
-
-        if (lado === 'izquierdo') setBloquesIzq1(prev => [...prev, bloque]);
-        else setBloquesDer1(prev => [...prev, bloque]);
+        if (lado === 'izquierdo') {
+            setPesoIzq1(p => p + bloque.peso);
+            setBloquesIzq1(prev => [...prev, bloque]);
+        } else {
+            setPesoDer1(p => p + bloque.peso);
+            setBloquesDer1(prev => [...prev, bloque]);
+        }
 
         setBloques(prev => prev.filter(b => b.id !== bloque.id));
         setMiTurno(false);
@@ -177,16 +183,30 @@ export default function GameMultijugador() {
         );
     };
 
+    if (jugadoresConectados < 2) {
+        return (
+            <View style={styles.centered}>
+                <Text style={styles.esperando} selectable={false}>
+                    Esperando jugadores... ({jugadoresConectados}/2)
+                </Text>
+            </View>
+        );
+    }
+
     return (
         <ScrollView contentContainerStyle={styles.container}>
-            <Text style={styles.titulo}>Jugador: {nombre}</Text>
-            <Text style={styles.subtitulo}>Turno de: {jugadorEnTurno}</Text>
-            {miTurno && <Text style={{ color: 'red', marginBottom: 10 }}>⏱️ Tiempo restante: {Math.floor(contador / 60)}:{String(contador % 60).padStart(2, '0')}</Text>}
+            <Text style={styles.titulo} selectable={false}>Jugador: {nombre}</Text>
+            <Text style={styles.subtitulo} selectable={false}>Turno de: {jugadorEnTurno}</Text>
+            {miTurno && (
+                <Text style={styles.contador} selectable={false}>
+                    ⏱️ {Math.floor(contador / 60)}:{String(contador % 60).padStart(2, '0')}
+                </Text>
+            )}
 
-            <Text style={styles.section}>Balanza 1 (finaliza turno):</Text>
+            <Text style={styles.section} selectable={false}>Balanza 1 (finaliza turno):</Text>
             <BalanzaAnimada pesoIzq={pesoIzq1} pesoDer={pesoDer1} bloquesIzq={bloquesIzq1} bloquesDer={bloquesDer1} setDropAreas={setDropAreas1} allowRemove={false} />
 
-            <Text style={styles.section}>Balanza 2 (prueba libre):</Text>
+            <Text style={styles.section} selectable={false}>Balanza 2 (prueba libre):</Text>
             <BalanzaAnimada pesoIzq={pesoIzq2} pesoDer={pesoDer2} bloquesIzq={bloquesIzq2} bloquesDer={bloquesDer2} setDropAreas={setDropAreas2} allowRemove={true} />
 
             <View style={styles.botonera}>
@@ -198,7 +218,9 @@ export default function GameMultijugador() {
                 </View>
             </View>
 
-            <View style={styles.bloquesContainer}>{bloques.map(renderBloque)}</View>
+            <View style={styles.bloquesContainer}>
+                {bloques.map(renderBloque)}
+            </View>
         </ScrollView>
     );
 }
@@ -207,6 +229,9 @@ const styles = StyleSheet.create({
     container: { flexGrow: 1, padding: 20, backgroundColor: '#fff' },
     titulo: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
     subtitulo: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
+    contador: { fontSize: 16, color: 'red', marginBottom: 10 },
+    esperando: { fontSize: 18, color: '#666' },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     section: { fontSize: 16, fontWeight: 'bold', marginTop: 20 },
     bloquesContainer: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 20 },
     bloque: { width: 60, height: 60, borderRadius: 8, margin: 8 },

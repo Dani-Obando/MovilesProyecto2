@@ -14,7 +14,6 @@ export default function BalanzaAnimada({
     const refIzq = useRef(null);
     const refDer = useRef(null);
 
-    // Animar inclinación
     useEffect(() => {
         const diff = pesoIzq - pesoDer;
         const final = Math.max(Math.min(diff, 50), -50);
@@ -25,7 +24,6 @@ export default function BalanzaAnimada({
         }).start();
     }, [pesoIzq, pesoDer]);
 
-    // Medir platos y actualizar áreas
     const medirAreas = useCallback(() => {
         if (refIzq.current) {
             refIzq.current.measureInWindow((x, y, width, height) => {
@@ -40,8 +38,8 @@ export default function BalanzaAnimada({
     }, [setDropAreas]);
 
     useEffect(() => {
-        setTimeout(medirAreas, 200); // pequeño delay para asegurar layout
-    }, [bloquesIzq.length, bloquesDer.length]);
+        setTimeout(medirAreas, 200);
+    }, [bloquesIzq.length, bloquesDer.length, medirAreas]);
 
     const renderBloques = (bloques, lado) =>
         bloques.map(b => (
@@ -57,7 +55,7 @@ export default function BalanzaAnimada({
 
     return (
         <View style={styles.wrapper}>
-            <Text style={styles.titulo}>⚖️ Balanza</Text>
+            <Text style={styles.titulo} selectable={false}>⚖️ Balanza</Text>
             <View style={styles.soporte}>
                 <View style={styles.baseVertical} />
 
@@ -78,14 +76,14 @@ export default function BalanzaAnimada({
                     <View style={styles.cuerdaDer} />
 
                     <View style={styles.platoIzq}>
-                        <Text style={styles.pesoText}>{pesoIzq}g</Text>
+                        <Text style={styles.pesoText} selectable={false}>{pesoIzq}g</Text>
                         <View ref={refIzq} style={styles.platoCaja}>
                             {renderBloques(bloquesIzq, 'izquierdo')}
                         </View>
                     </View>
 
                     <View style={styles.platoDer}>
-                        <Text style={styles.pesoText}>{pesoDer}g</Text>
+                        <Text style={styles.pesoText} selectable={false}>{pesoDer}g</Text>
                         <View ref={refDer} style={styles.platoCaja}>
                             {renderBloques(bloquesDer, 'derecho')}
                         </View>
