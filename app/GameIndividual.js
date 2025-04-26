@@ -1,26 +1,36 @@
-// GameMultijugador.js
 import React, { useEffect, useState, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { View, Text, ScrollView, StyleSheet, Animated, PanResponder, Alert } from 'react-native';
+import {
+    View,
+    Text,
+    ScrollView,
+    StyleSheet,
+    Animated,
+    PanResponder,
+    Button,
+    Alert,
+} from 'react-native';
 import { getSocket } from '../sockets/connection';
 import BalanzaAnimada from '../components/BalanzaAnimada';
 
 const COLORES = ['red', 'blue', 'green', 'orange', 'purple'];
 
-export default function GameMultijugador() {
+export default function GameIndividual() {
     const { nombre } = useLocalSearchParams();
     const router = useRouter();
+
     const [bloques, setBloques] = useState([]);
-    const [pesoIzq, setPesoIzq] = useState(0);
-    const [pesoDer, setPesoDer] = useState(0);
-    const [bloquesIzq, setBloquesIzq] = useState([]);
-    const [bloquesDer, setBloquesDer] = useState([]);
-    const [miTurno, setMiTurno] = useState(false);
-    const [jugadorEnTurno, setJugadorEnTurno] = useState('');
-    const [dropAreas, setDropAreas] = useState({ izquierdo: null, derecho: null });
-    const [jugadoresConectados, setJugadoresConectados] = useState(0);
-    const [contador, setContador] = useState(300); // 5 minutos
-    const intervaloRef = useRef(null);
+    const [pesoIzq1, setPesoIzq1] = useState(0);
+    const [pesoDer1, setPesoDer1] = useState(0);
+    const [pesoIzq2, setPesoIzq2] = useState(0);
+    const [pesoDer2, setPesoDer2] = useState(0);
+    const [bloquesIzq1, setBloquesIzq1] = useState([]);
+    const [bloquesDer1, setBloquesDer1] = useState([]);
+    const [bloquesIzq2, setBloquesIzq2] = useState([]);
+    const [bloquesDer2, setBloquesDer2] = useState([]);
+    const [dropAreas1, setDropAreas1] = useState({ izquierdo: null, derecho: null });
+    const [dropAreas2, setDropAreas2] = useState({ izquierdo: null, derecho: null });
+    const [jugadas, setJugadas] = useState([]);
 
     useEffect(() => {
         const nuevos = [];
@@ -37,108 +47,102 @@ export default function GameMultijugador() {
         setBloques(nuevos);
     }, []);
 
-    useEffect(() => {
-        const socket = getSocket();
-        if (!socket) return;
-
-        socket.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            if (data.type === 'ENTRADA') {
-                setJugadoresConectados(data.totalJugadores || 0);
+    const enviarJugada = (bloque, lado, balanza) => {
+        if (balanza === 1) {
+            if (lado === 'izquierdo') {
+                setPesoIzq1(p => p + bloque.peso);
+                setBloquesIzq1(prev => [...prev, bloque]);
+            } else {
+                setPesoDer1(p => p + bloque.peso);
+                setBloquesDer1(prev => [...prev, bloque]);
             }
-            if (data.type === 'TURNO') {
-                setMiTurno(data.tuTurno);
-                setJugadorEnTurno(data.jugadorEnTurno);
-
-                if (data.tuTurno) {
-                    clearInterval(intervaloRef.current);
-                    setContador(300);
-                    intervaloRef.current = setInterval(() => {
-                        setContador((prev) => {
-                            if (prev <= 1) {
-                                clearInterval(intervaloRef.current);
-                                return 0;
-                            }
-                            return prev - 1;
-                        });
-                    }, 1000);
-                }
+            setJugadas(prev => [...prev, {
+                jugador: nombre,
+                turno: prev.length + 1,
+                peso: bloque.peso,
+                color: bloque.color,
+            }]);
+        } else {
+            if (lado === 'izquierdo') {
+                setPesoIzq2(p => p + bloque.peso);
+                setBloquesIzq2(prev => [...prev, bloque]);
+            } else {
+                setPesoDer2(p => p + bloque.peso);
+                setBloquesDer2(prev => [...prev, bloque]);
             }
-            if (data.type === 'RESUMEN') {
+        }
+
+        setBloques(prev => {
+            const restantes = prev.filter(b => b.id !== bloque.id);
+
+            if (restantes.length === 0 && bloquesIzq1.length + bloquesDer1.length === 9 && balanza === 1) {
                 router.replace({
                     pathname: '/result',
                     params: {
-                        resumen: encodeURIComponent(JSON.stringify(data)),
                         nombre,
+                        resumen: encodeURIComponent(JSON.stringify({
+                            contenido: [...jugadas, {
+                                jugador: nombre,
+                                turno: jugadas.length + 1,
+                                peso: bloque.peso,
+                                color: bloque.color,
+                            }],
+                            totales: {
+                                izquierdo: pesoIzq1 + (lado === 'izquierdo' ? bloque.peso : 0),
+                                derecho: pesoDer1 + (lado === 'derecho' ? bloque.peso : 0),
+                            },
+                            ganador: (pesoIzq1 + (lado === 'izquierdo' ? bloque.peso : 0)) >
+                                (pesoDer1 + (lado === 'derecho' ? bloque.peso : 0))
+                                ? 'Izquierdo' : 'Derecho',
+                            sobrevivientes: [nombre],
+                            bloquesPorJugador: {
+                                [nombre]: [...bloquesIzq1, ...bloquesDer1, bloque],
+                            },
+                        })),
                     },
                 });
             }
-        };
 
-        if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'ENTRADA', jugador: nombre, modo: 'multijugador' }));
+            return restantes;
+        });
+    };
+
+    const quitarUltimoBloque = (lado) => {
+        let bloque;
+        if (lado === 'izquierdo' && bloquesIzq2.length) {
+            bloque = bloquesIzq2[bloquesIzq2.length - 1];
+            setBloquesIzq2(prev => prev.slice(0, -1));
+            setPesoIzq2(p => p - bloque.peso);
+        } else if (lado === 'derecho' && bloquesDer2.length) {
+            bloque = bloquesDer2[bloquesDer2.length - 1];
+            setBloquesDer2(prev => prev.slice(0, -1));
+            setPesoDer2(p => p - bloque.peso);
         } else {
-            socket.onopen = () => {
-                socket.send(JSON.stringify({ type: 'ENTRADA', jugador: nombre, modo: 'multijugador' }));
-            };
+            Alert.alert("Nada que quitar en ese lado");
+            return;
         }
-
-        return () => clearInterval(intervaloRef.current);
-    }, []);
-
-    const enviarJugada = (bloque, lado) => {
-        if (!miTurno) return;
-        const socket = getSocket();
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'JUGADA',
-                jugador: nombre,
-                peso: bloque.peso,
-                color: bloque.color,
-                lado,
-            }));
-        }
-
-        if (lado === 'izquierdo') {
-            setPesoIzq(p => p + bloque.peso);
-            setBloquesIzq(prev => [...prev, bloque]);
-        } else {
-            setPesoDer(p => p + bloque.peso);
-            setBloquesDer(prev => [...prev, bloque]);
-        }
-
-        setBloques(prev => prev.filter(b => b.id !== bloque.id));
-        setMiTurno(false);
+        setBloques(prev => [...prev, bloque]);
     };
 
     const isInDropArea = (gesture, area) => {
         if (!area) return false;
         const { moveX, moveY } = gesture;
-        return (
-            moveX > area.x &&
-            moveX < area.x + area.width &&
-            moveY > area.y &&
-            moveY < area.y + area.height
-        );
+        return moveX > area.x && moveX < area.x + area.width && moveY > area.y && moveY < area.y + area.height;
     };
 
     const renderBloque = (bloque) => {
         const panResponder = PanResponder.create({
-            onStartShouldSetPanResponder: () => miTurno,
+            onStartShouldSetPanResponder: () => true,
             onPanResponderGrant: () => bloque.pan.extractOffset(),
-            onPanResponderMove: Animated.event(
-                [null, { dx: bloque.pan.x, dy: bloque.pan.y }],
-                { useNativeDriver: false }
-            ),
+            onPanResponderMove: Animated.event([null, { dx: bloque.pan.x, dy: bloque.pan.y }], { useNativeDriver: false }),
             onPanResponderRelease: (_, gesture) => {
                 bloque.pan.flattenOffset();
-                if (isInDropArea(gesture, dropAreas.izquierdo)) enviarJugada(bloque, 'izquierdo');
-                else if (isInDropArea(gesture, dropAreas.derecho)) enviarJugada(bloque, 'derecho');
+                if (isInDropArea(gesture, dropAreas2.izquierdo)) enviarJugada(bloque, 'izquierdo', 2);
+                else if (isInDropArea(gesture, dropAreas2.derecho)) enviarJugada(bloque, 'derecho', 2);
+                else if (isInDropArea(gesture, dropAreas1.izquierdo)) enviarJugada(bloque, 'izquierdo', 1);
+                else if (isInDropArea(gesture, dropAreas1.derecho)) enviarJugada(bloque, 'derecho', 1);
                 else {
-                    Animated.spring(bloque.pan, {
-                        toValue: { x: 0, y: 0 },
-                        useNativeDriver: false,
-                    }).start();
+                    Animated.spring(bloque.pan, { toValue: { x: 0, y: 0 }, useNativeDriver: false }).start();
                 }
             },
         });
@@ -156,32 +160,39 @@ export default function GameMultijugador() {
         );
     };
 
-    if (jugadoresConectados < 2) {
-        return (
-            <View style={styles.centered}>
-                <Text style={styles.esperando}>
-                    Esperando jugadores... ({jugadoresConectados}/2)
-                </Text>
-            </View>
-        );
-    }
-
     return (
         <ScrollView contentContainerStyle={styles.container}>
             <Text style={styles.titulo}>Jugador: {nombre}</Text>
-            <Text style={styles.subtitulo}>Turno de: {jugadorEnTurno}</Text>
-            <Text style={styles.contador}>
-                ⏱️ {Math.floor(contador / 60)}:{String(contador % 60).padStart(2, '0')}
-            </Text>
+            <Text style={styles.subtitulo}>Modo Individual</Text>
 
+            <Text style={styles.section}>Balanza 1 (finaliza juego):</Text>
             <BalanzaAnimada
-                pesoIzq={pesoIzq}
-                pesoDer={pesoDer}
-                bloquesIzq={bloquesIzq}
-                bloquesDer={bloquesDer}
-                setDropAreas={setDropAreas}
+                pesoIzq={pesoIzq1}
+                pesoDer={pesoDer1}
+                bloquesIzq={bloquesIzq1}
+                bloquesDer={bloquesDer1}
+                setDropAreas={setDropAreas1}
                 allowRemove={false}
             />
+
+            <Text style={styles.section}>Balanza 2 (pruebas libres):</Text>
+            <BalanzaAnimada
+                pesoIzq={pesoIzq2}
+                pesoDer={pesoDer2}
+                bloquesIzq={bloquesIzq2}
+                bloquesDer={bloquesDer2}
+                setDropAreas={setDropAreas2}
+                allowRemove={true}
+            />
+
+            <View style={styles.botonera}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                    <Button title="Quitar izquierdo" onPress={() => quitarUltimoBloque('izquierdo')} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Button title="Quitar derecho" onPress={() => quitarUltimoBloque('derecho')} />
+                </View>
+            </View>
 
             <View style={styles.bloquesContainer}>
                 {bloques.map(renderBloque)}
@@ -193,10 +204,9 @@ export default function GameMultijugador() {
 const styles = StyleSheet.create({
     container: { flexGrow: 1, padding: 20, backgroundColor: '#fff' },
     titulo: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-    subtitulo: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
-    contador: { fontSize: 16, color: 'red', marginBottom: 20 },
-    esperando: { fontSize: 18, color: '#666' },
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    subtitulo: { fontSize: 16, fontWeight: 'bold', marginBottom: 10, color: '#666' },
+    section: { fontSize: 16, fontWeight: 'bold', marginTop: 20 },
     bloquesContainer: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 20 },
     bloque: { width: 60, height: 60, borderRadius: 8, margin: 8 },
+    botonera: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
 });

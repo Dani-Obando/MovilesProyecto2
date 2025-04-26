@@ -1,4 +1,3 @@
-// GameMultijugador.js
 import React, { useEffect, useState, useRef } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -77,6 +76,12 @@ export default function GameMultijugador() {
                     }, 1000);
                 }
             }
+            if (data.type === 'IR_A_ADIVINANZA') {
+                router.replace({
+                    pathname: '/adivinanza',
+                    params: { nombre },
+                });
+            }
             if (data.type === 'RESUMEN') {
                 router.replace({
                     pathname: '/result',
@@ -100,6 +105,7 @@ export default function GameMultijugador() {
                 color: bloque.color,
                 lado,
             }));
+            socket.send(JSON.stringify({ type: 'FINALIZAR_TURNO', jugador: nombre }));
         }
 
         if (lado === 'izquierdo') setPesoIzq1(p => p + bloque.peso);
@@ -174,9 +180,8 @@ export default function GameMultijugador() {
     return (
         <ScrollView contentContainerStyle={styles.container}>
             <Text style={styles.titulo}>Jugador: {nombre}</Text>
-            <Text style={styles.modo}>🔗 Estás jugando en modo multijugador</Text>
             <Text style={styles.subtitulo}>Turno de: {jugadorEnTurno}</Text>
-            {miTurno && <Text style={styles.temporizador}>⏱️ Tiempo restante: {Math.floor(contador / 60)}:{String(contador % 60).padStart(2, '0')}</Text>}
+            {miTurno && <Text style={{ color: 'red', marginBottom: 10 }}>⏱️ Tiempo restante: {Math.floor(contador / 60)}:{String(contador % 60).padStart(2, '0')}</Text>}
 
             <Text style={styles.section}>Balanza 1 (finaliza turno):</Text>
             <BalanzaAnimada pesoIzq={pesoIzq1} pesoDer={pesoDer1} bloquesIzq={bloquesIzq1} bloquesDer={bloquesDer1} setDropAreas={setDropAreas1} allowRemove={false} />
@@ -200,10 +205,8 @@ export default function GameMultijugador() {
 
 const styles = StyleSheet.create({
     container: { flexGrow: 1, padding: 20, backgroundColor: '#fff' },
-    titulo: { fontSize: 18, fontWeight: 'bold', marginBottom: 5 },
-    modo: { fontStyle: 'italic', color: '#555', marginBottom: 10 },
+    titulo: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
     subtitulo: { fontSize: 16, fontWeight: 'bold', marginBottom: 10 },
-    temporizador: { color: 'red', fontWeight: 'bold', marginBottom: 10 },
     section: { fontSize: 16, fontWeight: 'bold', marginTop: 20 },
     bloquesContainer: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 20 },
     bloque: { width: 60, height: 60, borderRadius: 8, margin: 8 },
