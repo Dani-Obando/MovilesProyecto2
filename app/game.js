@@ -33,6 +33,7 @@ export default function Game() {
     const [jugadorEnTurno, setJugadorEnTurno] = useState('');
     const [dropAreas1, setDropAreas1] = useState({ izquierdo: null, derecho: null });
     const [dropAreas2, setDropAreas2] = useState({ izquierdo: null, derecho: null });
+    const [jugadas, setJugadas] = useState([]);
 
     useEffect(() => {
         const nuevos = [];
@@ -84,6 +85,12 @@ export default function Game() {
                 setPesoDer1(p => p + bloque.peso);
                 setBloquesDer1(prev => [...prev, bloque]);
             }
+            // Registrar jugada solo para Balanza 1
+            setJugadas(prev => [...prev, {
+                jugador: nombre,
+                peso: bloque.peso,
+                turno: prev.length + 1,
+            }]);
         } else {
             if (lado === 'izquierdo') {
                 setPesoIzq2(p => p + bloque.peso);
@@ -94,27 +101,30 @@ export default function Game() {
             }
         }
 
-        // Remover de inventario sin importar la balanza
         setBloques(prev => {
             const restantes = prev.filter(b => b.id !== bloque.id);
             if (restantes.length === 0 && bloquesIzq1.length + bloquesDer1.length === 9) {
-                // Si este fue el último del inventario y fue a la balanza 1
+                // Solo terminar cuando se coloquen en la balanza 1
                 router.replace({
                     pathname: '/result',
                     params: {
                         nombre,
                         resumen: encodeURIComponent(JSON.stringify({
                             totales: {
-                                izquierdo: pesoIzq1 + pesoIzq2 + (lado === 'izquierdo' ? bloque.peso : 0),
-                                derecho: pesoDer1 + pesoDer2 + (lado === 'derecho' ? bloque.peso : 0),
+                                izquierdo: pesoIzq1 + (lado === 'izquierdo' && balanza === 1 ? bloque.peso : 0),
+                                derecho: pesoDer1 + (lado === 'derecho' && balanza === 1 ? bloque.peso : 0),
                             },
-                            contenido: [],
-                            ganador: (pesoIzq1 + pesoIzq2 + (lado === 'izquierdo' ? bloque.peso : 0)) >
-                                (pesoDer1 + pesoDer2 + (lado === 'derecho' ? bloque.peso : 0))
+                            contenido: [...jugadas, {
+                                jugador: nombre,
+                                peso: bloque.peso,
+                                turno: jugadas.length + 1,
+                            }],
+                            ganador: (pesoIzq1 + (lado === 'izquierdo' && balanza === 1 ? bloque.peso : 0)) >
+                                (pesoDer1 + (lado === 'derecho' && balanza === 1 ? bloque.peso : 0))
                                 ? "Izquierdo" : "Derecho",
                             sobrevivientes: [nombre],
                             bloquesPorJugador: {
-                                [nombre]: [...bloquesIzq1, ...bloquesDer1, ...bloquesIzq2, ...bloquesDer2, bloque],
+                                [nombre]: [...bloquesIzq1, ...bloquesDer1, bloque],
                             },
                         })),
                     },
@@ -223,7 +233,9 @@ export default function Game() {
                 </View>
             </View>
 
-            <View style={styles.bloquesContainer}>{bloques.map(renderBloque)}</View>
+            <View style={styles.bloquesContainer}>
+                {bloques.map(renderBloque)}
+            </View>
         </ScrollView>
     );
 }
